@@ -1,1 +1,87 @@
+getwd()
+list.files()
 
+## Function provided is for the assignment US National Highway Traffic Safety Administration's Fatality Analysis Reporting System.
+
+@details\Fatality Analysis Reporting System:
+   \itemize{
+   \item{url{https://www.nhtsa.gov/research-data/fatality-analysis-reporting-system-fars}}
+   }
+
+## Importing Libraries
+@importFrom readr
+@importFrom dplyr
+@importFrom magrittr
+@importFrom tidyr
+@importFrom maps
+@importFrom graphics
+
+##Reading the fars_read
+\code{fars_read}
+@export
+fars_read <- function(USNHT) {
+  if(!file.exists(USNHT))
+    stop("file '", USNHT, "' does not exist")
+  data <- suppressMessages({
+    readr::read_csv(USNHT, progress = FALSE)
+  })
+  dplyr::tbl_df(data)
+}
+
+##farsreadyears(year)
+@export
+farsreadyears <- function(years) {
+  lapply(years, function(year) {
+    file <- make_USNHT(year)
+    tryCatch({
+      dat <- fars_read(file)
+      dplyr::mutate(dat, year = year) %>%
+        dplyr::select(MONTH, year)
+    }, error = function(e) {
+      warning("invalid year: ", year)
+      return(NULL)
+    })
+  })
+}
+
+## Summarizing FARS Data Via Years
+
+@examples
+plot(fars_summarize_years(2015))
+fars_summarize_years(c(2015,2014))
+@export
+fars_summarize_years <- function(years) {
+  dat_list <- fars_read_years(years)
+  dplyr::bind_rows(dat_list) %>%
+    dplyr::group_by(year, MONTH) %>%
+    dplyr::summarize(n = n()) %>%
+    tidyr::spread(year, n)
+}
+
+
+## fars_map_state
+
+#' Error occurs when \code{state.num} is invalid
+@examples
+fars_map_state(38, 2015)
+@export
+fars_map_state <- function(state.num, year) {
+  filename <- make_filename(year)
+  data <- fars_read(filename)
+  state.num <- as.integer(state.num)
+  
+  if(!(state.num %in% unique(data$STATE)))
+    stop("invalid STATE number: ", state.num)
+  data.sub <- dplyr::filter(data, STATE == state.num)
+  if(nrow(data.sub) == 0L) {
+    message("no accidents to plot")
+    return(invisible(NULL))
+  }
+  is.na(data.sub$LONGITUD) <- data.sub$LONGITUD > 900
+  is.na(data.sub$LATITUDE) <- data.sub$LATITUDE > 90
+  with(data.sub, {
+    maps::map("state", ylim = range(LATITUDE, na.rm = TRUE),
+              xlim = range(LONGITUD, na.rm = TRUE))
+    graphics::points(LONGITUD, LATITUDE, pch = 46)
+  })
+}
